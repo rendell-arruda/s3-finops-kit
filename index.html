@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>S3 FinOps Lens</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0c0f;
+      --bg2:       #111418;
+      --bg3:       #181d24;
+      --border:    rgba(255,255,255,0.07);
+      --accent:    #00e5a0;
+      --accent2:   #0077ff;
+      --danger:    #ff4d6d;
+      --warn:      #ffbe0b;
+      --text:      #e8eaf0;
+      --muted:     #5a6070;
+      --mono:      'IBM Plex Mono', monospace;
+      --sans:      'IBM Plex Sans', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      padding: 0;
+    }
+
+    /* noise texture overlay */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* header */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: rgba(10,12,15,0.85);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    .last-update {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* main layout */
+    main {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 40px 80px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* section title */
+    .section-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--accent);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    /* cards */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 48px;
+    }
+
+    .card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+      animation: fadeUp 0.5s ease both;
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--accent);
+      opacity: 0.6;
+    }
+
+    .card:nth-child(2)::before { background: var(--accent2); }
+    .card:nth-child(3)::before { background: var(--warn); }
+    .card:nth-child(4)::before { background: var(--danger); }
+
+    .card-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+
+    .card-value {
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    .card-sub {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .card:nth-child(1) { animation-delay: 0.05s; }
+    .card:nth-child(2) { animation-delay: 0.10s; }
+    .card:nth-child(3) { animation-delay: 0.15s; }
+    .card:nth-child(4) { animation-delay: 0.20s; }
+
+    /* two col layout */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 24px;
+      margin-bottom: 48px;
+      align-items: start;
+    }
+
+    /* panel */
+    .panel {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* filters */
+    .filters {
+      display: flex;
+      gap: 8px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .filter-input {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .filter-input:focus {
+      border-color: var(--accent);
+    }
+
+    select.filter-input {
+      cursor: pointer;
+    }
+
+    /* table */
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      font-family: var(--mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      padding: 12px 24px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 14px 24px;
+      font-family: var(--mono);
+      font-size: 12px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+
+    tr:last-child td { border-bottom: none; }
+
+    tbody tr:hover td { background: var(--bg3); }
+
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    .badge-sa  { background: rgba(0,229,160,0.1); color: var(--accent); }
+    .badge-us  { background: rgba(0,119,255,0.1); color: var(--accent2); }
+
+    .size-bar-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .size-bar {
+      height: 4px;
+      border-radius: 2px;
+      background: var(--accent);
+      min-width: 2px;
+      opacity: 0.7;
+    }
+
+    /* chart panel */
+    .chart-wrap {
+      padding: 24px;
+    }
+
+    /* region list */
+    .region-list {
+      padding: 16px 24px;
+    }
+
+    .region-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .region-item:last-child { border-bottom: none; }
+
+    /* empty state */
+    .empty {
+      padding: 40px 24px;
+      text-align: center;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    /* footer */
+    footer {
+      text-align: center;
+      padding: 24px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      position: relative;
+      z-index: 1;
+    }
+
+    footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot"></div>
+    S3 FinOps Lens
+  </div>
+  <div class="last-update" id="last-update">loading...</div>
+</header>
+
+<main>
+  <div class="section-label">Overview</div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-label">Total buckets</div>
+      <div class="card-value" id="total-buckets">—</div>
+      <div class="card-sub">across all regions</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Total size</div>
+      <div class="card-value" id="total-size">—</div>
+      <div class="card-sub">gigabytes stored</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Regions</div>
+      <div class="card-value" id="total-regions">—</div>
+      <div class="card-sub">monitored</div>
+    </div>
+    <div class="card">
+      <div class="card-label">Storage classes</div>
+      <div class="card-value" id="total-classes">—</div>
+      <div class="card-sub">in use</div>
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Buckets</span>
+        <span class="last-update" id="row-count">—</span>
+      </div>
+      <div class="filters">
+        <input class="filter-input" type="text" id="search" placeholder="Search bucket..." style="flex:1; min-width:160px;">
+        <select class="filter-input" id="filter-region">
+          <option value="">All regions</option>
+        </select>
+        <select class="filter-input" id="filter-class">
+          <option value="">All storage classes</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Bucket</th>
+              <th>Region</th>
+              <th>Storage class</th>
+              <th>Size (GB)</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:24px;">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">By storage class</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="chart-class" height="200"></canvas>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">By region</span>
+        </div>
+        <div class="region-list" id="region-list"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  built with <a href="https://github.com" target="_blank">s3-finops-lens</a> — data refreshed daily via GitHub Actions
+</footer>
+
+<script>
+  let allData = [];
+  let chart = null;
+
+  Papa.parse('data.csv', {
+    download: true,
+    header: true,
+    dynamicTyping: true,
+    complete: ({ data }) => {
+      allData = data.filter(r => r.bucket);
+      init();
+    }
+  });
+
+  function init() {
+    populateFilters();
+    updateLastUpdate();
+    render(allData);
+
+    document.getElementById('search').addEventListener('input', applyFilters);
+    document.getElementById('filter-region').addEventListener('change', applyFilters);
+    document.getElementById('filter-class').addEventListener('change', applyFilters);
+  }
+
+  function populateFilters() {
+    const regions = [...new Set(allData.map(r => r.regiao))].sort();
+    const classes = [...new Set(allData.map(r => r.storage_class))].sort();
+
+    const rSel = document.getElementById('filter-region');
+    regions.forEach(r => rSel.innerHTML += `<option value="${r}">${r}</option>`);
+
+    const cSel = document.getElementById('filter-class');
+    classes.forEach(c => cSel.innerHTML += `<option value="${c}">${c}</option>`);
+  }
+
+  function applyFilters() {
+    const search = document.getElementById('search').value.toLowerCase();
+    const region = document.getElementById('filter-region').value;
+    const cls    = document.getElementById('filter-class').value;
+
+    const filtered = allData.filter(r =>
+      (!search || r.bucket.toLowerCase().includes(search)) &&
+      (!region || r.regiao === region) &&
+      (!cls    || r.storage_class === cls)
+    );
+
+    render(filtered);
+  }
+
+  function render(data) {
+    renderCards(data);
+    renderTable(data);
+    renderChart(data);
+    renderRegions(data);
+  }
+
+  function renderCards(data) {
+    const buckets = new Set(data.map(r => r.bucket)).size;
+    const total   = data.reduce((s, r) => s + (r.tamanho_gb || 0), 0);
+    const regions = new Set(data.map(r => r.regiao)).size;
+    const classes = new Set(data.map(r => r.storage_class)).size;
+
+    document.getElementById('total-buckets').textContent = buckets;
+    document.getElementById('total-size').textContent    = total.toFixed(4);
+    document.getElementById('total-regions').textContent = regions;
+    document.getElementById('total-classes').textContent = classes;
+  }
+
+  function renderTable(data) {
+    const maxSize = Math.max(...data.map(r => r.tamanho_gb || 0), 0.0001);
+    const tbody = document.getElementById('table-body');
+
+    if (!data.length) {
+      tbody.innerHTML = `<tr><td colspan="4" class="empty">No buckets found.</td></tr>`;
+      document.getElementById('row-count').textContent = '0 results';
+      return;
+    }
+
+    document.getElementById('row-count').textContent = `${data.length} result${data.length !== 1 ? 's' : ''}`;
+
+    tbody.innerHTML = data.map(r => {
+      const badgeClass = r.regiao === 'sa-east-1' ? 'badge-sa' : 'badge-us';
+      const barWidth   = Math.max((r.tamanho_gb / maxSize) * 80, 2);
+      return `
+        <tr>
+          <td>${r.bucket}</td>
+          <td><span class="badge ${badgeClass}">${r.regiao}</span></td>
+          <td>${r.storage_class}</td>
+          <td>
+            <div class="size-bar-wrap">
+              <div class="size-bar" style="width:${barWidth}px"></div>
+              ${(r.tamanho_gb || 0).toFixed(4)}
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
+  }
+
+  function renderChart(data) {
+    const byClass = {};
+    data.forEach(r => {
+      byClass[r.storage_class] = (byClass[r.storage_class] || 0) + (r.tamanho_gb || 0);
+    });
+
+    const labels = Object.keys(byClass);
+    const values = Object.values(byClass);
+    const colors = ['#00e5a0','#0077ff','#ffbe0b','#ff4d6d','#a855f7','#06b6d4','#f97316'];
+
+    if (chart) chart.destroy();
+
+    chart = new Chart(document.getElementById('chart-class'), {
+      type: 'doughnut',
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: colors.slice(0, labels.length),
+          borderWidth: 0,
+          hoverOffset: 6,
+        }]
+      },
+      options: {
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: '#5a6070',
+              font: { family: 'IBM Plex Mono', size: 10 },
+              padding: 12,
+              boxWidth: 10,
+              boxHeight: 10,
+            }
+          }
+        },
+        cutout: '68%',
+      }
+    });
+  }
+
+  function renderRegions(data) {
+    const byRegion = {};
+    data.forEach(r => {
+      if (!byRegion[r.regiao]) byRegion[r.regiao] = { buckets: new Set(), size: 0 };
+      byRegion[r.regiao].buckets.add(r.bucket);
+      byRegion[r.regiao].size += (r.tamanho_gb || 0);
+    });
+
+    const list = document.getElementById('region-list');
+    list.innerHTML = Object.entries(byRegion).map(([reg, v]) => `
+      <div class="region-item">
+        <span>${reg}</span>
+        <span style="color:var(--muted)">${v.buckets.size} bucket${v.buckets.size !== 1 ? 's' : ''} · ${v.size.toFixed(4)} GB</span>
+      </div>
+    `).join('') || `<div class="empty">No data.</div>`;
+  }
+
+  function updateLastUpdate() {
+    const dates = allData.map(r => r.coletado_em).filter(Boolean).sort();
+    if (dates.length) {
+      const d = new Date(dates[dates.length - 1]);
+      document.getElementById('last-update').textContent =
+        `Last update: ${d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}`;
+    }
+  }
+</script>
+</body>
+</html>
