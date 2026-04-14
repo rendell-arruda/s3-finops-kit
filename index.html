@@ -108,7 +108,7 @@
     /* cards */
     .cards {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 16px;
       margin-bottom: 48px;
     }
@@ -135,6 +135,7 @@
     .card:nth-child(2)::before { background: var(--accent2); }
     .card:nth-child(3)::before { background: var(--warn); }
     .card:nth-child(4)::before { background: var(--danger); }
+    .card:nth-child(5)::before { background: var(--danger); }
 
     .card-label {
       font-family: var(--mono);
@@ -269,8 +270,10 @@
       font-weight: 500;
     }
 
-    .badge-sa  { background: rgba(0,229,160,0.1); color: var(--accent); }
-    .badge-us  { background: rgba(0,119,255,0.1); color: var(--accent2); }
+    .badge-sa       { background: rgba(0,229,160,0.1); color: var(--accent); }
+    .badge-us       { background: rgba(0,119,255,0.1); color: var(--accent2); }
+    .badge-ok       { background: rgba(0,229,160,0.1); color: var(--accent); }
+    .badge-warn     { background: rgba(255,77,109,0.1); color: var(--danger); }
 
     .size-bar-wrap {
       display: flex;
@@ -396,6 +399,11 @@
       <div class="card-value" id="total-classes">—</div>
       <div class="card-sub">in use</div>
     </div>
+    <div class="card">
+      <div class="card-label">No lifecycle</div>
+      <div class="card-value" id="total-no-lifecycle" style="color:var(--danger)">—</div>
+      <div class="card-sub">buckets at risk</div>
+    </div>
   </div>
 
   <div class="two-col">
@@ -421,6 +429,7 @@
               <th>Region</th>
               <th>Storage class</th>
               <th>Size (GB)</th>
+              <th>Lifecycle</th>
             </tr>
           </thead>
           <tbody id="table-body"></tbody>
@@ -449,20 +458,33 @@
 </main>
 
 <footer>
-  built with <a href="https://github.com" target="_blank">s3-finops-lens</a> — data refreshed daily via GitHub Actions
+  built with <a href="https://github.com/rendell-arruda/s3-finops-kit" target="_blank">s3-finops-kit</a> — data refreshed daily via GitHub Actions
 </footer>
 
 <script>
   let allData = [];
+  let lifecycleMap = {};
   let chart = null;
 
-  Papa.parse('data.csv', {
+  Papa.parse('data/data.csv', {
     download: true,
     header: true,
     dynamicTyping: true,
     complete: ({ data }) => {
       allData = data.filter(r => r.bucket);
-      init();
+
+      Papa.parse('data/lifecycle.csv', {
+        download: true,
+        header: true,
+        dynamicTyping: true,
+        complete: ({ data: ldata }) => {
+          ldata.filter(r => r.bucket).forEach(r => {
+            lifecycleMap[r.bucket] = r.tem_lifecycle === true || r.tem_lifecycle === 'True';
+          });
+          init();
+        },
+        error: () => init()
+      });
     }
   });
 
@@ -513,11 +535,13 @@
     const total   = data.reduce((s, r) => s + (r.tamanho_gb || 0), 0);
     const regions = new Set(data.map(r => r.regiao)).size;
     const classes = new Set(data.map(r => r.storage_class)).size;
+    const noLifecycle = Object.values(lifecycleMap).filter(v => !v).length;
 
-    document.getElementById('total-buckets').textContent = buckets;
-    document.getElementById('total-size').textContent    = total.toFixed(4);
-    document.getElementById('total-regions').textContent = regions;
-    document.getElementById('total-classes').textContent = classes;
+    document.getElementById('total-buckets').textContent    = buckets;
+    document.getElementById('total-size').textContent       = total.toFixed(4);
+    document.getElementById('total-regions').textContent    = regions;
+    document.getElementById('total-classes').textContent    = classes;
+    document.getElementById('total-no-lifecycle').textContent = noLifecycle || '—';
   }
 
   function renderTable(data) {
@@ -525,7 +549,7 @@
     const tbody = document.getElementById('table-body');
 
     if (!data.length) {
-      tbody.innerHTML = `<tr><td colspan="4" class="empty">No buckets found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="empty">No buckets found.</td></tr>`;
       document.getElementById('row-count').textContent = '0 results';
       return;
     }
@@ -533,8 +557,14 @@
     document.getElementById('row-count').textContent = `${data.length} result${data.length !== 1 ? 's' : ''}`;
 
     tbody.innerHTML = data.map(r => {
-      const badgeClass = r.regiao === 'sa-east-1' ? 'badge-sa' : 'badge-us';
-      const barWidth   = Math.max((r.tamanho_gb / maxSize) * 80, 2);
+      const badgeClass  = r.regiao === 'sa-east-1' ? 'badge-sa' : 'badge-us';
+      const barWidth    = Math.max((r.tamanho_gb / maxSize) * 80, 2);
+      const hasLifecycle = lifecycleMap[r.bucket];
+      const lifecycleBadge = Object.keys(lifecycleMap).length === 0
+        ? '<span style="color:var(--muted)">—</span>'
+        : hasLifecycle
+          ? '<span class="badge badge-ok">yes</span>'
+          : '<span class="badge badge-warn">no</span>';
       return `
         <tr>
           <td>${r.bucket}</td>
@@ -546,6 +576,7 @@
               ${(r.tamanho_gb || 0).toFixed(4)}
             </div>
           </td>
+          <td>${lifecycleBadge}</td>
         </tr>`;
     }).join('');
   }

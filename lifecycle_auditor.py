@@ -57,3 +57,4 @@ if __name__ == "__main__":
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     dados = collect()
     salvar_csv(dados, f"data/lifecycle_{timestamp}.csv")
+    salvar_csv(dados, "data/lifecycle.csv")

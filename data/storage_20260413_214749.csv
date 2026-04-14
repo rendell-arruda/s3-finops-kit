@@ -1,0 +1,7 @@
+bucket,regiao,storage_class,tamanho_gb,coletado_em
+bucket-aqui-tbm-pra-testar-multi-account,us-east-1,S3 Standard,0.0007,2026-04-14 00:47:50
+cf-templates-ww1k8a02hfen-us-east-1,us-east-1,S3 Standard,0.0003,2026-04-14 00:47:54
+meu-bucket-finops-rendell,us-east-1,S3 Standard,0.0002,2026-04-14 00:47:55
+rendell-athena-data-lab,sa-east-1,S3 Standard,0.0,2026-04-14 00:47:57
+rendell-athena-results-lab,sa-east-1,S3 Standard,0.0,2026-04-14 00:47:57
+teste-s3-analysis-sp-script-lifecycle,sa-east-1,S3 Standard,0.0003,2026-04-14 00:47:57
