@@ -1,0 +1,8 @@
+bucket,tem_lifecycle,total_regras,coletado_em
+bucket-aqui-tbm-pra-testar-multi-account,False,0,2026-04-14 00:19:39
+cf-templates-1uvt9vehg04uk-us-east-1,True,1,2026-04-14 00:19:40
+cf-templates-ww1k8a02hfen-us-east-1,False,0,2026-04-14 00:19:40
+meu-bucket-finops-rendell,False,0,2026-04-14 00:19:41
+rendell-athena-data-lab,False,0,2026-04-14 00:19:41
+rendell-athena-results-lab,False,0,2026-04-14 00:19:41
+teste-s3-analysis-sp-script-lifecycle,False,0,2026-04-14 00:19:41
