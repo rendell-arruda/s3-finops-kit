@@ -108,7 +108,7 @@
     /* cards */
     .cards {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       gap: 16px;
       margin-bottom: 48px;
     }
@@ -136,6 +136,7 @@
     .card:nth-child(3)::before { background: var(--warn); }
     .card:nth-child(4)::before { background: var(--danger); }
     .card:nth-child(5)::before { background: var(--danger); }
+    .card:nth-child(6)::before { background: var(--warn); }
 
     .card-label {
       font-family: var(--mono);
@@ -270,10 +271,12 @@
       font-weight: 500;
     }
 
-    .badge-sa       { background: rgba(0,229,160,0.1); color: var(--accent); }
-    .badge-us       { background: rgba(0,119,255,0.1); color: var(--accent2); }
-    .badge-ok       { background: rgba(0,229,160,0.1); color: var(--accent); }
-    .badge-warn     { background: rgba(255,77,109,0.1); color: var(--danger); }
+    .badge-sa        { background: rgba(0,229,160,0.1); color: var(--accent); }
+    .badge-us        { background: rgba(0,119,255,0.1); color: var(--accent2); }
+    .badge-ok        { background: rgba(0,229,160,0.1); color: var(--accent); }
+    .badge-warn      { background: rgba(255,77,109,0.1); color: var(--danger); }
+    .badge-abandoned { background: rgba(255,190,11,0.1); color: var(--warn); }
+    .badge-vazio     { background: rgba(90,96,112,0.1);  color: var(--muted); }
 
     .size-bar-wrap {
       display: flex;
@@ -404,6 +407,11 @@
       <div class="card-value" id="total-no-lifecycle" style="color:var(--danger)">—</div>
       <div class="card-sub">buckets at risk</div>
     </div>
+    <div class="card">
+      <div class="card-label">Abandoned</div>
+      <div class="card-value" id="total-abandoned" style="color:var(--warn)">—</div>
+      <div class="card-sub">no access in 90d</div>
+    </div>
   </div>
 
   <div class="two-col">
@@ -430,6 +438,7 @@
               <th>Storage class</th>
               <th>Size (GB)</th>
               <th>Lifecycle</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody id="table-body"></tbody>
@@ -464,6 +473,7 @@
 <script>
   let allData = [];
   let lifecycleMap = {};
+  let abandonedMap = {};
   let chart = null;
 
   Papa.parse('data/data.csv', {
@@ -481,7 +491,19 @@
           ldata.filter(r => r.bucket).forEach(r => {
             lifecycleMap[r.bucket] = r.tem_lifecycle === true || r.tem_lifecycle === 'True';
           });
-          init();
+
+          Papa.parse('data/abandoned.csv', {
+            download: true,
+            header: true,
+            dynamicTyping: true,
+            complete: ({ data: adata }) => {
+              adata.filter(r => r.bucket).forEach(r => {
+                abandonedMap[r.bucket] = r.status;
+              });
+              init();
+            },
+            error: () => init()
+          });
         },
         error: () => init()
       });
@@ -531,17 +553,19 @@
   }
 
   function renderCards(data) {
-    const buckets = new Set(data.map(r => r.bucket)).size;
-    const total   = data.reduce((s, r) => s + (r.tamanho_gb || 0), 0);
-    const regions = new Set(data.map(r => r.regiao)).size;
-    const classes = new Set(data.map(r => r.storage_class)).size;
+    const buckets     = new Set(data.map(r => r.bucket)).size;
+    const total       = data.reduce((s, r) => s + (r.tamanho_gb || 0), 0);
+    const regions     = new Set(data.map(r => r.regiao)).size;
+    const classes     = new Set(data.map(r => r.storage_class)).size;
     const noLifecycle = Object.values(lifecycleMap).filter(v => !v).length;
+    const abandoned   = Object.values(abandonedMap).filter(v => v === 'abandonado').length;
 
-    document.getElementById('total-buckets').textContent    = buckets;
-    document.getElementById('total-size').textContent       = total.toFixed(4);
-    document.getElementById('total-regions').textContent    = regions;
-    document.getElementById('total-classes').textContent    = classes;
+    document.getElementById('total-buckets').textContent      = buckets;
+    document.getElementById('total-size').textContent         = total.toFixed(4);
+    document.getElementById('total-regions').textContent      = regions;
+    document.getElementById('total-classes').textContent      = classes;
     document.getElementById('total-no-lifecycle').textContent = noLifecycle || '—';
+    document.getElementById('total-abandoned').textContent    = abandoned || '—';
   }
 
   function renderTable(data) {
@@ -549,7 +573,7 @@
     const tbody = document.getElementById('table-body');
 
     if (!data.length) {
-      tbody.innerHTML = `<tr><td colspan="5" class="empty">No buckets found.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="empty">No buckets found.</td></tr>`;
       document.getElementById('row-count').textContent = '0 results';
       return;
     }
@@ -557,14 +581,24 @@
     document.getElementById('row-count').textContent = `${data.length} result${data.length !== 1 ? 's' : ''}`;
 
     tbody.innerHTML = data.map(r => {
-      const badgeClass  = r.regiao === 'sa-east-1' ? 'badge-sa' : 'badge-us';
-      const barWidth    = Math.max((r.tamanho_gb / maxSize) * 80, 2);
+      const badgeClass   = r.regiao === 'sa-east-1' ? 'badge-sa' : 'badge-us';
+      const barWidth     = Math.max((r.tamanho_gb / maxSize) * 80, 2);
       const hasLifecycle = lifecycleMap[r.bucket];
       const lifecycleBadge = Object.keys(lifecycleMap).length === 0
         ? '<span style="color:var(--muted)">—</span>'
         : hasLifecycle
           ? '<span class="badge badge-ok">yes</span>'
           : '<span class="badge badge-warn">no</span>';
+
+      const status = abandonedMap[r.bucket];
+      const statusBadge = !status
+        ? '<span style="color:var(--muted)">—</span>'
+        : status === 'ativo'
+          ? '<span class="badge badge-ok">active</span>'
+          : status === 'abandonado'
+            ? '<span class="badge badge-abandoned">abandoned</span>'
+            : '<span class="badge badge-vazio">empty</span>';
+
       return `
         <tr>
           <td>${r.bucket}</td>
@@ -577,6 +611,7 @@
             </div>
           </td>
           <td>${lifecycleBadge}</td>
+          <td>${statusBadge}</td>
         </tr>`;
     }).join('');
   }
