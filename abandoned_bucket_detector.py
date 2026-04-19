@@ -33,7 +33,6 @@ def collect():
         print(f"Analisando: {nome} ({regiao})")
 
         cw = session.client("cloudwatch", region_name=regiao)
-
         objects_response = cw.get_metric_statistics(
             Namespace="AWS/S3",
             MetricName="NumberOfObjects",
@@ -46,8 +45,13 @@ def collect():
             Period=90 * 86400,
             Statistics=["Average"],
         )
+        datapoints = objects_response["Datapoints"]
+        if datapoints:
+            total_objetos = datapoints[0]["Average"]
+        else:
+            total_objetos = 0
 
-        requests_response = cw.get_metric_statistics(
+        request_response = cw.get_metric_statistics(
             Namespace="AWS/S3",
             MetricName="NumberOfRequests",
             Dimensions=[
@@ -58,17 +62,13 @@ def collect():
             Period=90 * 86400,
             Statistics=["Sum"],
         )
+        datapoints_req = request_response["Datapoints"]
+        if datapoints_req:
+            total_requests = datapoints_req[0]["Sum"]
+        else:
+            total_requests = 0
 
-        total_objetos = (
-            objects_response["Datapoints"][-1]["Average"]
-            if objects_response["Datapoints"]
-            else 0
-        )
-        total_requests = (
-            requests_response["Datapoints"][-1]["Sum"]
-            if requests_response["Datapoints"]
-            else 0
-        )
+        print(f"{nome}: {total_requests} requests and {total_objetos} objetos")
 
         if total_objetos == 0:
             status = "vazio"
@@ -80,7 +80,7 @@ def collect():
         resultados.append(
             {
                 "bucket": nome,
-                "regiao": regiao,
+                "region": regiao,
                 "status": status,
                 "total_objetos": int(total_objetos),
                 "total_requests": int(total_requests),
@@ -94,20 +94,18 @@ def collect():
 
 
 def salvar_csv(dados, nome_arquivo):
-    campos = [
-        "bucket",
-        "regiao",
-        "status",
-        "total_objetos",
-        "total_requests",
-        "coletado_em",
-    ]
-
     with open(nome_arquivo, mode="w", newline="") as arquivo_csv:
+        campos = [
+            "bucket",
+            "region",
+            "status",
+            "total_objetos",
+            "total_requests",
+            "coletado_em",
+        ]
         writer = csv.DictWriter(arquivo_csv, fieldnames=campos)
         writer.writeheader()
         writer.writerows(dados)
-
     print(f"\n{nome_arquivo} salvo com {len(dados)} registros.")
 
 
