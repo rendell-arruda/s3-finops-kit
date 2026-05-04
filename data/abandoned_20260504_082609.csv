@@ -1,0 +1,8 @@
+bucket,region,status,total_objetos,total_requests,coletado_em
+bucket-aqui-tbm-pra-testar-multi-account,us-east-1,abandonado,2,0,2026-05-04 11:26:11
+cf-templates-1uvt9vehg04uk-us-east-1,us-east-1,abandonado,2,0,2026-05-04 11:26:11
+cf-templates-ww1k8a02hfen-us-east-1,us-east-1,abandonado,2,0,2026-05-04 11:26:12
+meu-bucket-finops-rendell,us-east-1,abandonado,1,0,2026-05-04 11:26:13
+rendell-athena-data-lab,sa-east-1,abandonado,2,0,2026-05-04 11:26:14
+rendell-athena-results-lab,sa-east-1,abandonado,12,0,2026-05-04 11:26:14
+teste-s3-analysis-sp-script-lifecycle,sa-east-1,abandonado,1,0,2026-05-04 11:26:14
