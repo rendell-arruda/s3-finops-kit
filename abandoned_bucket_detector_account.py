@@ -3,9 +3,9 @@ import csv
 from datetime import datetime, timezone, timedelta
 
 # ---------------------------------------------------------------
-# configuração — troque aqui para rodar em outra conta/região
+# configuração — adicione aqui todos os profiles que quer rodar
 # ---------------------------------------------------------------
-AWS_PROFILE = "sandbox"
+AWS_PROFILES = ["default", "sandbox"]
 REGIOES = ["sa-east-1", "us-east-1", "us-east-2"]
 # ---------------------------------------------------------------
 
@@ -19,90 +19,82 @@ def get_bucket_region(s3_client, bucket_name):
 def collect():
     resultados = []
 
-    session = boto3.Session(profile_name=AWS_PROFILE)
-    s3 = session.client("s3")
+    # percorre cada profile/conta
+    for profile in AWS_PROFILES:
+        print(f"\nColetando conta: {profile}")
 
-    response = s3.list_buckets()
-    buckets = response["Buckets"]
+        session = boto3.Session(profile_name=profile)
+        s3 = session.client("s3")
 
-    for bucket in buckets:
-        nome = bucket["Name"]
+        response = s3.list_buckets()
+        buckets = response["Buckets"]
 
-        regiao = get_bucket_region(s3, nome)
+        for bucket in buckets:
+            nome = bucket["Name"]
 
-        if regiao not in REGIOES:
-            print(f"  Ignorando {nome} ({regiao})")
-            continue
+            regiao = get_bucket_region(s3, nome)
 
-        print(f"Analisando: {nome} ({regiao})")
+            if regiao not in REGIOES:
+                print(f"  Ignorando {nome} ({regiao})")
+                continue
 
-        cw = session.client("cloudwatch", region_name=regiao)
+            print(f"  Analisando: {nome} ({regiao})")
 
-        objects_response = cw.get_metric_statistics(
-            Namespace="AWS/S3",
-            MetricName="NumberOfObjects",
-            Dimensions=[
-                {"Name": "BucketName", "Value": nome},
-                {"Name": "StorageType", "Value": "AllStorageTypes"},
-            ],
-            StartTime=datetime.now(tz=timezone.utc) - timedelta(days=90),
-            EndTime=datetime.now(tz=timezone.utc),
-            Period=90 * 86400,
-            Statistics=["Average"],
-        )
-        datapoints = objects_response["Datapoints"]
-        total_objetos = datapoints[0]["Average"] if datapoints else 0
+            cw = session.client("cloudwatch", region_name=regiao)
 
-        request_response = cw.get_metric_statistics(
-            Namespace="AWS/S3",
-            MetricName="NumberOfRequests",
-            Dimensions=[
-                {"Name": "BucketName", "Value": nome},
-            ],
-            StartTime=datetime.now(tz=timezone.utc) - timedelta(days=90),
-            EndTime=datetime.now(tz=timezone.utc),
-            Period=90 * 86400,
-            Statistics=["Sum"],
-        )
-        datapoints_req = request_response["Datapoints"]
-        total_requests = datapoints_req[0]["Sum"] if datapoints_req else 0
+            objects_response = cw.get_metric_statistics(
+                Namespace="AWS/S3",
+                MetricName="NumberOfObjects",
+                Dimensions=[
+                    {"Name": "BucketName", "Value": nome},
+                    {"Name": "StorageType", "Value": "AllStorageTypes"},
+                ],
+                StartTime=datetime.now(tz=timezone.utc) - timedelta(days=90),
+                EndTime=datetime.now(tz=timezone.utc),
+                Period=90 * 86400,
+                Statistics=["Average"],
+            )
+            datapoints = objects_response["Datapoints"]
+            total_objetos = datapoints[0]["Average"] if datapoints else 0
 
-        if total_objetos == 0:
-            status = "vazio"
-        elif total_requests == 0:
-            status = "abandonado"
-        else:
-            status = "ativo"
+            request_response = cw.get_metric_statistics(
+                Namespace="AWS/S3",
+                MetricName="NumberOfRequests",
+                Dimensions=[
+                    {"Name": "BucketName", "Value": nome},
+                ],
+                StartTime=datetime.now(tz=timezone.utc) - timedelta(days=90),
+                EndTime=datetime.now(tz=timezone.utc),
+                Period=90 * 86400,
+                Statistics=["Sum"],
+            )
+            datapoints_req = request_response["Datapoints"]
+            total_requests = datapoints_req[0]["Sum"] if datapoints_req else 0
 
-        print(
-            f"  {status} — {total_objetos:.0f} objetos, {total_requests:.0f} requests"
-        )
+            if total_objetos == 0:
+                status = "vazio"
+            elif total_requests == 0:
+                status = "abandonado"
+            else:
+                status = "ativo"
 
-        resultados.append(
-            {
-                "bucket": nome,
-                "region": regiao,
-                "status": status,
-                "total_objetos": int(total_objetos),
+            print(f"    {status} — {total_objetos:.0f} objetos, {total_requests:.0f} requests")
+
+            resultados.append({
+                "account":        profile,
+                "bucket":         nome,
+                "region":         regiao,
+                "status":         status,
+                "total_objetos":  int(total_objetos),
                 "total_requests": int(total_requests),
-                "coletado_em": datetime.now(tz=timezone.utc).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                ),
-            }
-        )
+                "coletado_em":    datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            })
 
     return resultados
 
 
 def salvar_csv(dados, nome_arquivo):
-    campos = [
-        "bucket",
-        "region",
-        "status",
-        "total_objetos",
-        "total_requests",
-        "coletado_em",
-    ]
+    campos = ["account", "bucket", "region", "status", "total_objetos", "total_requests", "coletado_em"]
 
     with open(nome_arquivo, mode="w", newline="") as arquivo_csv:
         writer = csv.DictWriter(arquivo_csv, fieldnames=campos)
